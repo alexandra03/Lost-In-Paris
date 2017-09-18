@@ -9,27 +9,33 @@ from settings import GOOGLE_API_KEY
 
 app = Flask(__name__)
 
+direction_re = 'How do I get to (?P<destination>.+) from (?P<start>.+) by (?P<mode>walking|transit)?\?'
+
 @app.route("/sms", methods=['GET', 'POST'])
 def sms_reply():
     body = request.values.get('Body')
     resp = MessagingResponse()
 
-    try:
-        destination = re.search('How do I get to (.+)\?', body).group(1)
-    except AttributeError:
+    parsed = re.search(direction_re, body)
+
+    if parsed is None:
         resp.message('Sorry, I didn\'t get that')
         return str(resp)
 
     gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
 
     directions = gmaps.directions(
-        "Union Station, Toronto",
-        destination,
-        mode="transit",
+        parsed.group('start'),
+        parsed.group('destination'),
+        mode=parsed.group('mode'),
         departure_time=datetime.now()
     )
 
-    trip_data = directions[0]['legs'][0]
+    try:
+        trip_data = directions[0]['legs'][0]
+    except IndexError:
+        resp.message('Sorry, that\'s too ambiguous')
+        return str(resp)
 
     msg = '\n'
 
