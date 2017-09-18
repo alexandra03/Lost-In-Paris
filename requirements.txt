@@ -1,0 +1,5 @@
+simplekv==0.9
+flask==0.12.2
+redis==2.10.6
+googlemaps==2.5.1
+twilio==6.6.2
