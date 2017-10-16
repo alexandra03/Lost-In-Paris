@@ -1,6 +1,8 @@
 import re
 import redis
 import json
+import time
+import pytz
 from datetime import datetime
 
 import googlemaps
@@ -21,11 +23,50 @@ KVSessionExtension(store, app)
 def direction_original(parsed, resp):
     gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
 
+    start_location = parsed.group('start')
+    time_type = parsed.group('timetype')
+
+    extra_args = dict()
+
+    '''
+    If a time is specified, we need to first figure out what timezone the
+    user is in. Google's Timezone API required a geocoded location, so we 
+    need to use the Geocoding API to get that data from the provided start 
+    location. Once we have the timezone, we get the current datetime in 
+    that location, replace the time with the provided one, and get the
+    resulting timestamp. Getting the current datetime from the starting 
+    location is necessary since it could be offset a day from UTC.
+    '''
+    if time_type:
+        desired_time = datetime.strptime(parsed.group('time'), '%I:%M%p')
+    
+        start_geocoded = gmaps.geocode(start_location)[0]['geometry']['location']
+
+        start_timezone = gmaps.timezone(
+            (start_geocoded['lat'], start_geocoded['lng']), 
+            time.time()
+        )['timeZoneId']
+
+        local_datetime = datetime.now(
+            pytz.timezone(start_timezone)
+        ).replace(
+            hour=desired_time.hour, 
+            minute=desired_time.minute
+        )
+        
+        utc_timestamp = int(time.mktime(
+            local_datetime.astimezone(pytz.utc).timetuple()
+        ))
+
+        time_key = 'arrival_time' if time_type == 'at' else 'departure_time'
+        extra_args[time_key] = utc_timestamp
+
+
     directions = gmaps.directions(
-        parsed.group('start'),
+        start_location,
         parsed.group('destination'),
         mode=parsed.group('mode'),
-        departure_time=datetime.now()
+        **extra_args
     )
 
     session['google_data'] = directions
@@ -39,7 +80,7 @@ def direction_original(parsed, resp):
     msg = '\n'
 
     for num, step in enumerate(trip_data['steps']):
-        msg += '{num}. {step}\n'.format(
+        msg += u'{num}. {step}\n'.format(
             num=num+1, 
             step=step['html_instructions']
         )
@@ -60,7 +101,7 @@ def direction_expanded(parsed, resp):
     msg = '\n'
 
     for num, step in enumerate(trip_data['steps']):
-        msg += '{num}. {step}\n'.format(
+        msg += u'{num}. {step}\n'.format(
             num=num+1, 
             step=step['html_instructions']
         )
@@ -71,11 +112,11 @@ def direction_expanded(parsed, resp):
 
 @app.route("/sms", methods=['GET', 'POST'])
 def sms_reply():
-    body = request.values.get('Body')
+    body = request.values.get('Body', '')
     resp = MessagingResponse()
 
     COMMANDS = {
-        'How do I get to (?P<destination>.+) from (?P<start>.+) by (?P<mode>walking|transit)?\?': direction_original,
+        'How do I get to (?P<destination>.+) from (?P<start>.+?)( by (?P<mode>walking|transit))?( (?P<timetype>at|before) (?P<time>\d{1,2}(?:(?:am|pm)|(?::\d{1,2})(?:am|pm)?)))?\?': direction_original,
         'Expand on (?P<num>[0-9]+)': direction_expanded,
     }
 
