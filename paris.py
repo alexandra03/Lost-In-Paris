@@ -25,6 +25,7 @@ def direction_original(parsed, resp):
 
     start_location = parsed.group('start')
     time_type = parsed.group('timetype')
+    time_string = parsed.group('time')
 
     extra_args = dict()
 
@@ -38,8 +39,11 @@ def direction_original(parsed, resp):
     location is necessary since it could be offset a day from UTC.
     '''
     if time_type:
-        desired_time = datetime.strptime(parsed.group('time'), '%I:%M%p')
-    
+        try:
+            desired_time = datetime.strptime(time_string, '%I:%M%p')
+        except ValueError:
+            desired_time = datetime.strptime(time_string, '%I%p')
+
         start_geocoded = gmaps.geocode(start_location)[0]['geometry']['location']
 
         start_timezone = gmaps.timezone(
