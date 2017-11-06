@@ -3,21 +3,58 @@ import redis
 import json
 import time
 import pytz
+import os
 from datetime import datetime
 
 import googlemaps
 from twilio.twiml.messaging_response import MessagingResponse
-from flask import Flask, request, session
+from flask import Flask, request, session, g, current_app
 from flask_kvsession import KVSessionExtension
 from simplekv.memory.redisstore import RedisStore
+from sqlite3 import dbapi2 as sqlite3
 
 from settings import GOOGLE_API_KEY, SECRET_KEY
 
 app = Flask(__name__)
 app.config.from_object(__name__)
 
+app.config.update(dict(
+    DATABASE=os.path.join(app.root_path, 'database.db'),
+    SECRET_KEY='<NOT_TELLING_YOU>',
+    USERNAME='<ME>',
+    PASSWORD='<NOPE>'
+))
+
 store = RedisStore(redis.StrictRedis(host = '127.0.0.1', port = 6379, db = 0))
 KVSessionExtension(store, app)
+
+def connect_db():
+    """Connects to the specific database."""
+    rv = sqlite3.connect(current_app.config['DATABASE'])
+    rv.row_factory = sqlite3.Row
+    return rv
+
+
+def init_db():
+    """Initializes the database."""
+    db = get_db()
+    with current_app.open_resource('schema.sql', mode='r') as f:
+        db.cursor().executescript(f.read())
+    db.commit()
+
+@app.cli.command('initdb')
+def initdb_command():
+    """Initializes the database."""
+    init_db()
+    print('Initialized the database.')
+
+def get_db():
+    """Opens a new database connection if there is none yet for the
+    current application context.
+    """
+    if not hasattr(g, 'sqlite_db'):
+        g.sqlite_db = connect_db()
+    return g.sqlite_db
 
 
 def direction_original(parsed, resp):
@@ -117,6 +154,7 @@ def direction_expanded(parsed, resp):
 @app.route("/sms", methods=['GET', 'POST'])
 def sms_reply():
     body = request.values.get('Body', '')
+    fromNumber = request.values.get('From')
     resp = MessagingResponse()
 
     COMMANDS = {
