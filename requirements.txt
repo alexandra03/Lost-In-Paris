@@ -3,3 +3,4 @@ flask==0.12.2
 redis==2.10.6
 googlemaps==2.5.1
 twilio==6.6.2
+flask-mysql==1.4.0

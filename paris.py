@@ -9,53 +9,33 @@ from datetime import datetime
 import googlemaps
 from twilio.twiml.messaging_response import MessagingResponse
 from flask import Flask, request, session, g, current_app
+from flaskext.mysql import MySQL
 from flask_kvsession import KVSessionExtension
 from simplekv.memory.redisstore import RedisStore
-from sqlite3 import dbapi2 as sqlite3
 
 import settings
 
 app = Flask(__name__)
 app.config.from_object(__name__)
+mysql = MySQL()
 
-app.config.update(dict(
-    DATABASE=os.path.join(app.root_path, 'database.db'),
-    SECRET_KEY='<NOT_TELLING_YOU>',
-    USERNAME='<ME>',
-    PASSWORD='<NOPE>'
-))
+# MySQL configurations
+app.config['MYSQL_DATABASE_USER'] = 'root'
+app.config['MYSQL_DATABASE_PASSWORD'] = 'a'
+app.config['MYSQL_DATABASE_DB'] = 'paris'
+app.config['MYSQL_DATABASE_HOST'] = 'localhost'
+
+mysql.init_app(app)
+
+app.secret_key = settings.APP_SECRET_KEY
 
 store = RedisStore(redis.StrictRedis(host = '127.0.0.1', port = 6379, db = 0))
 KVSessionExtension(store, app)
 
-def connect_db():
-    """Connects to the specific database."""
-    rv = sqlite3.connect(current_app.config['DATABASE'])
-    rv.row_factory = sqlite3.Row
-    return rv
-
-
-def init_db():
-    """Initializes the database."""
-    db = get_db()
-    with current_app.open_resource('schema.sql', mode='r') as f:
-        db.cursor().executescript(f.read())
-    db.commit()
-
-@app.cli.command('initdb')
-def initdb_command():
-    """Initializes the database."""
-    init_db()
-    print('Initialized the database.')
-
 def get_db():
-    """Opens a new database connection if there is none yet for the
-    current application context.
-    """
-    if not hasattr(g, 'sqlite_db'):
-        g.sqlite_db = connect_db()
+    if not hasattr(g, 'mysql_db'):
+        g.sqlite_db = mysql.connect()
     return g.sqlite_db
-
 
 
 def direction_original(parsed, resp, fromNumber):
@@ -108,12 +88,16 @@ def direction_original(parsed, resp, fromNumber):
     for the current phone number
     '''
     db = get_db()
-    entry = db.execute(
+    cur = db.cursor()
+    
+    cur.execute(
         "SELECT location.address FROM location\
         JOIN phone on location.phone_id=phone.id\
-        WHERE phone.number=? AND location.alias=?", 
+        WHERE phone.number=%s AND location.alias=%s", 
         [fromNumber, parsed.group('destination').lower()]
-    ).fetchone()
+    )
+
+    entry = cur.fetchone()
 
     destination = entry[0] if entry else parsed.group('destination')
 
@@ -175,12 +159,11 @@ def direction_expanded(parsed, resp, fromNumber):
 def save_alias(parsed, resp, fromNumber):
     db = get_db()
 
-    db.execute(
-        "INSERT INTO location (address, alias, phone_id) VALUES (?, ?, (SELECT id from phone WHERE number=?));",
+    db.cursor().execute(
+        "INSERT INTO location (address, alias, phone_id) VALUES (%s, %s, (SELECT id from phone WHERE number=%s));",
         [parsed.group('address'), parsed.group('alias').lower(), fromNumber]
     )
     db.commit()
-
     resp.message('Your address alias "%s" has been saved.' % parsed.group('alias'))
     return str(resp)
 
@@ -191,7 +174,7 @@ def sms_reply():
     resp = MessagingResponse()
 
     db = get_db()
-    db.execute('INSERT OR IGNORE INTO phone (number) VALUES (?)', [fromNumber])
+    db.cursor().execute('INSERT IGNORE INTO phone (number) VALUES (%s)', (fromNumber,))
     db.commit()
 
     COMMANDS = {
@@ -212,5 +195,4 @@ def sms_reply():
 
 
 if __name__ == "__main__":
-    app.secret_key = settings.APP_SECRET_KEY
     app.run(debug=True)
