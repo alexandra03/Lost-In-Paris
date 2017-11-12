@@ -7,6 +7,7 @@ GOOGLE_API_KEY = os.environ['GOOGLE_API_KEY']
 
 APP_SECRET_KEY = os.environ['APP_SECRET_KEY']
 
+REDIS_URL = os.environ['REDIS_URL']
 
 if 'DATABASE_URL' in os.environ:
     url = urlparse.urlparse(os.environ['DATABASE_URL'])

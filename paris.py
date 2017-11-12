@@ -29,7 +29,7 @@ mysql.init_app(app)
 
 app.secret_key = settings.APP_SECRET_KEY
 
-store = RedisStore(redis.StrictRedis(host = '127.0.0.1', port = 6379, db = 0))
+store = RedisStore(redis.from_url(settings.REDIS_URL))
 KVSessionExtension(store, app)
 
 def get_db():
