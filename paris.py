@@ -20,10 +20,10 @@ app.config.from_object(__name__)
 mysql = MySQL()
 
 # MySQL configurations
-app.config['MYSQL_DATABASE_USER'] = 'root'
-app.config['MYSQL_DATABASE_PASSWORD'] = 'a'
-app.config['MYSQL_DATABASE_DB'] = 'paris'
-app.config['MYSQL_DATABASE_HOST'] = 'localhost'
+app.config['MYSQL_DATABASE_USER'] = settings.DATABASE['USER']
+app.config['MYSQL_DATABASE_PASSWORD'] = settings.DATABASE['PWD']
+app.config['MYSQL_DATABASE_DB'] = settings.DATABASE['NAME']
+app.config['MYSQL_DATABASE_HOST'] = settings.DATABASE['HOST']
 
 mysql.init_app(app)
 
@@ -89,7 +89,7 @@ def direction_original(parsed, resp, fromNumber):
     '''
     db = get_db()
     cur = db.cursor()
-    
+
     cur.execute(
         "SELECT location.address FROM location\
         JOIN phone on location.phone_id=phone.id\
