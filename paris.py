@@ -13,7 +13,7 @@ from flask_kvsession import KVSessionExtension
 from simplekv.memory.redisstore import RedisStore
 from sqlite3 import dbapi2 as sqlite3
 
-from settings import GOOGLE_API_KEY, SECRET_KEY
+import settings
 
 app = Flask(__name__)
 app.config.from_object(__name__)
@@ -59,7 +59,7 @@ def get_db():
 
 
 def direction_original(parsed, resp, fromNumber):
-    gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
+    gmaps = googlemaps.Client(key=settings.GOOGLE_API_KEY)
 
     start_location = parsed.group('start')
     time_type = parsed.group('timetype')
@@ -103,9 +103,23 @@ def direction_original(parsed, resp, fromNumber):
         time_key = 'arrival_time' if time_type == 'at' else 'departure_time'
         extra_args[time_key] = utc_timestamp
 
+    '''
+    Check and see whether the destination is a saved alias
+    for the current phone number
+    '''
+    db = get_db()
+    entry = db.execute(
+        "SELECT location.address FROM location\
+        JOIN phone on location.phone_id=phone.id\
+        WHERE phone.number=? AND location.alias=?", 
+        [fromNumber, parsed.group('destination').lower()]
+    ).fetchone()
+
+    destination = entry[0] if entry else parsed.group('destination')
+
     directions = gmaps.directions(
         start_location,
-        parsed.group('destination'),
+        destination,
         mode=parsed.group('mode'),
         **extra_args
     )
@@ -141,11 +155,18 @@ def direction_expanded(parsed, resp, fromNumber):
 
     msg = '\n'
 
-    for num, step in enumerate(trip_data['steps']):
-        msg += u'{num}. {step}\n'.format(
-            num=num+1, 
-            step=step['html_instructions']
-        )
+    if 'steps' in trip_data:
+        for num, step in enumerate(trip_data['steps']):
+            msg += u'{num}. {step}\n'.format(
+                num=num+1, 
+                step=step['html_instructions']
+            )
+    elif 'transit_details' in trip_data:
+        msg += '%(dist)s, %(dur)s, Name: %(name)s' % {
+           'dist':  trip_data['distance']['text'],
+            'dur': trip_data['duration']['text'],
+            'name': trip_data['transit_details']['line']['short_name']
+        }
 
     resp.message(msg)
     return str(resp)
@@ -191,5 +212,5 @@ def sms_reply():
 
 
 if __name__ == "__main__":
-    app.secret_key = SECRET_KEY
+    app.secret_key = settings.APP_SECRET_KEY
     app.run(debug=True)
