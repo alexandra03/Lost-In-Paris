@@ -3,7 +3,7 @@ DROP TABLE IF EXISTS location;
 
 CREATE TABLE phone (
     id INTEGER PRIMARY KEY,
-    "number" VARCHAR(15)
+    "number" VARCHAR(15) UNIQUE
 );
 
 CREATE TABLE location (

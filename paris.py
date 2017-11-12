@@ -57,7 +57,8 @@ def get_db():
     return g.sqlite_db
 
 
-def direction_original(parsed, resp):
+
+def direction_original(parsed, resp, fromNumber):
     gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
 
     start_location = parsed.group('start')
@@ -102,7 +103,6 @@ def direction_original(parsed, resp):
         time_key = 'arrival_time' if time_type == 'at' else 'departure_time'
         extra_args[time_key] = utc_timestamp
 
-
     directions = gmaps.directions(
         start_location,
         parsed.group('destination'),
@@ -130,7 +130,7 @@ def direction_original(parsed, resp):
     return str(resp)
 
 
-def direction_expanded(parsed, resp):
+def direction_expanded(parsed, resp, fromNumber):
     directions = session.get('google_data')
 
     if directions is None:
@@ -151,22 +151,39 @@ def direction_expanded(parsed, resp):
     return str(resp)
 
 
+def save_alias(parsed, resp, fromNumber):
+    db = get_db()
+
+    db.execute(
+        "INSERT INTO location (address, alias, phone_id) VALUES (?, ?, (SELECT id from phone WHERE number=?));",
+        [parsed.group('address'), parsed.group('alias').lower(), fromNumber]
+    )
+    db.commit()
+
+    resp.message('Your address alias "%s" has been saved.' % parsed.group('alias'))
+    return str(resp)
+
 @app.route("/sms", methods=['GET', 'POST'])
 def sms_reply():
     body = request.values.get('Body', '')
     fromNumber = request.values.get('From')
     resp = MessagingResponse()
 
+    db = get_db()
+    db.execute('INSERT OR IGNORE INTO phone (number) VALUES (?)', [fromNumber])
+    db.commit()
+
     COMMANDS = {
         'How do I get to (?P<destination>.+) from (?P<start>.+?)( by (?P<mode>walking|transit))?( (?P<timetype>at|before) (?P<time>\d{1,2}(?:(?:am|pm)|(?::\d{1,2})(?:am|pm)?)))?\?': direction_original,
         'Expand on (?P<num>[0-9]+)': direction_expanded,
+        'Save (?P<address>.*)(?=( as )) as (?P<alias>.*)': save_alias,
     }
 
     for cmd,fnc in COMMANDS.iteritems():
         parsed = re.search(cmd, body)
 
         if parsed:
-            return fnc(parsed, resp)
+            return fnc(parsed, resp, fromNumber)
 
     if parsed is None:
         resp.message('Sorry, I didn\'t get that')
