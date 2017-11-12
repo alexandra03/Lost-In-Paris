@@ -34,9 +34,20 @@ KVSessionExtension(store, app)
 
 def get_db():
     if not hasattr(g, 'mysql_db'):
-        g.sqlite_db = mysql.connect()
-    return g.sqlite_db
+        g.mysql_db = mysql.connect()
+    return g.mysql_db
 
+def init_db():
+    db = get_db()
+    with app.open_resource('schema.sql', mode='r') as f:
+        db.cursor().executescript(f.read())
+    db.commit()
+
+@app.cli.command('initdb')
+def initdb_command():
+    """Initializes the database."""
+    init_db()
+    print('Initialized the database.')
 
 def direction_original(parsed, resp, fromNumber):
     gmaps = googlemaps.Client(key=settings.GOOGLE_API_KEY)

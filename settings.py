@@ -24,5 +24,3 @@ else:
         'NAME': os.environ['MYSQL_NAME'],
         'HOST': os.environ['MYSQL_HOST']
     }
-
-test = 'mysql://b3b4f631aa3c36:372e5321@eu-cdbr-west-01.cleardb.com/heroku_ed3058ca21821c0?reconnect=true'
