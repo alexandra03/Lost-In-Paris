@@ -167,6 +167,10 @@ def save_alias(parsed, resp, fromNumber):
     resp.message('Your address alias "%s" has been saved.' % parsed.group('alias'))
     return str(resp)
 
+@app.route("/", methods=['GET', 'POST'])
+def home():
+    return "Hello world!"
+
 @app.route("/sms", methods=['GET', 'POST'])
 def sms_reply():
     body = request.values.get('Body', '')
